@@ -15,7 +15,7 @@
 use std::{
     fmt::{Debug, Formatter},
     sync::{
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
     },
 };
@@ -59,6 +59,10 @@ pub struct PeerTransport {
     /// Distinguishes "still `Connected` because nothing ever broke" from "was `Connected`,
     /// broke, and came back" — a level read of the connection state cannot tell them apart.
     disconnect_generation: AtomicU32,
+
+    /// Whether a `Disconnected` countdown is currently running for this transport, so that a
+    /// flapping connection collapses onto one timer instead of spawning one per transition.
+    disconnect_grace_armed: AtomicBool,
 }
 
 impl Debug for PeerTransport {
@@ -87,6 +91,7 @@ impl PeerTransport {
             })),
             negotiation_generation: AtomicU32::new(0),
             disconnect_generation: AtomicU32::new(0),
+            disconnect_grace_armed: AtomicBool::new(false),
         }
     }
 
@@ -102,6 +107,20 @@ impl PeerTransport {
     /// See [`Self::disconnect_generation`].
     pub fn disconnect_generation(&self) -> u32 {
         self.disconnect_generation.load(Ordering::Acquire)
+    }
+
+    /// Claim the right to start a `Disconnected` countdown for this transport.
+    ///
+    /// Returns `true` for the caller that armed it and `false` if a countdown is already
+    /// running, so repeated `Disconnected` transitions collapse onto a single timer rather
+    /// than spawning one per event.
+    pub fn try_arm_disconnect_grace(&self) -> bool {
+        !self.disconnect_grace_armed.swap(true, Ordering::AcqRel)
+    }
+
+    /// Release the countdown claim taken by [`Self::try_arm_disconnect_grace`].
+    pub fn disarm_disconnect_grace(&self) {
+        self.disconnect_grace_armed.store(false, Ordering::Release);
     }
 
     /// Mark this transport as awaiting a fresh ICE generation from the remote side.
@@ -810,6 +829,40 @@ mod tests {
 
         transport.note_connection_state(PeerConnectionState::Failed);
         assert_eq!(transport.disconnect_generation(), 2);
+    }
+
+    /// A flapping transport can emit many `Disconnected` transitions in a row. Each must
+    /// collapse onto the countdown already running rather than spawning its own, or a
+    /// connection bouncing under load would accumulate timers that all fire and re-report
+    /// the same failure.
+    #[test]
+    fn disconnect_grace_admits_one_countdown_at_a_time() {
+        use libwebrtc::prelude::*;
+        use livekit_protocol as proto;
+
+        let factory = PeerConnectionFactory::default();
+        let pc = factory
+            .create_peer_connection(RtcConfiguration {
+                ice_servers: vec![],
+                continual_gathering_policy: ContinualGatheringPolicy::GatherOnce,
+                ice_transport_type: IceTransportsType::All,
+            })
+            .unwrap();
+
+        let transport =
+            PeerTransport::new(pc, proto::SignalTarget::Subscriber, /* single_pc_mode= */ false);
+
+        assert!(transport.try_arm_disconnect_grace(), "first caller arms the countdown");
+        assert!(
+            !transport.try_arm_disconnect_grace(),
+            "a second transition must join the running countdown, not start another"
+        );
+        assert!(!transport.try_arm_disconnect_grace());
+
+        // Once the countdown has run, a later disconnect must be able to arm a fresh one --
+        // otherwise a transport that recovers and dies again is never escalated.
+        transport.disarm_disconnect_grace();
+        assert!(transport.try_arm_disconnect_grace());
     }
 
     #[test]
