@@ -48,6 +48,7 @@ pub mod ffi {
             gain_controller_enabled: bool,
             high_pass_filter_enabled: bool,
             noise_suppression_enabled: bool,
+            noise_suppression_level: u8,
         ) -> UniquePtr<AudioProcessingModule>;
     }
 }
