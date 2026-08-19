@@ -61,12 +61,14 @@ std::unique_ptr<AudioProcessingModule> create_apm(
     bool echo_canceller_enabled,
     bool gain_controller_enabled,
     bool high_pass_filter_enabled,
-    bool noise_suppression_enabled) {
+    bool noise_suppression_enabled,
+    uint8_t noise_suppression_level) {
   AudioProcessingConfig config;
   config.echo_canceller_enabled = echo_canceller_enabled;
   config.gain_controller_enabled = gain_controller_enabled;
   config.high_pass_filter_enabled = high_pass_filter_enabled;
   config.noise_suppression_enabled = noise_suppression_enabled;
+  config.noise_suppression_level = noise_suppression_level;
   return std::make_unique<AudioProcessingModule>(config);
 }
 
