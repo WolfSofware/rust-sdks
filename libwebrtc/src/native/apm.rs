@@ -21,6 +21,32 @@ pub struct AudioProcessingModule {
     sys_handle: UniquePtr<sys_apm::AudioProcessingModule>,
 }
 
+/// How hard the noise suppressor works.
+///
+/// WebRTC has had these four levels all along; what was missing here was a way
+/// to ask for one. The default is `Moderate`, chosen so the suppressor never
+/// damages speech — which also makes it close to inaudible on ordinary room
+/// noise, and leads callers to conclude it is not running at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NoiseSuppressionLevel {
+    Low,
+    #[default]
+    Moderate,
+    High,
+    VeryHigh,
+}
+
+impl NoiseSuppressionLevel {
+    fn as_u8(self) -> u8 {
+        match self {
+            Self::Low => 0,
+            Self::Moderate => 1,
+            Self::High => 2,
+            Self::VeryHigh => 3,
+        }
+    }
+}
+
 impl AudioProcessingModule {
     pub fn new(
         echo_canceller_enabled: bool,
@@ -28,12 +54,33 @@ impl AudioProcessingModule {
         high_pass_filter_enabled: bool,
         noise_suppression_enabled: bool,
     ) -> Self {
+        Self::with_noise_suppression_level(
+            echo_canceller_enabled,
+            gain_controller_enabled,
+            high_pass_filter_enabled,
+            noise_suppression_enabled,
+            NoiseSuppressionLevel::default(),
+        )
+    }
+
+    /// Same, but says how hard the suppressor should work.
+    ///
+    /// Kept separate from `new` so existing callers compile and behave exactly
+    /// as before: this is an addition, not a change.
+    pub fn with_noise_suppression_level(
+        echo_canceller_enabled: bool,
+        gain_controller_enabled: bool,
+        high_pass_filter_enabled: bool,
+        noise_suppression_enabled: bool,
+        noise_suppression_level: NoiseSuppressionLevel,
+    ) -> Self {
         Self {
             sys_handle: sys_apm::create_apm(
                 echo_canceller_enabled,
                 gain_controller_enabled,
                 high_pass_filter_enabled,
                 noise_suppression_enabled,
+                noise_suppression_level.as_u8(),
             ),
         }
     }
