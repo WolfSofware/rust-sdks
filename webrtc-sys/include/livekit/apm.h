@@ -31,6 +31,19 @@ struct AudioProcessingConfig {
   bool gain_controller_enabled;
   bool high_pass_filter_enabled;
   bool noise_suppression_enabled;
+  // How hard the suppressor works: 0 low, 1 moderate, 2 high, 3 very high.
+  //
+  // Upstream only exposes `enabled` and leaves the level at WebRTC's default
+  // (moderate), which is deliberately gentle so it never damages speech. On
+  // ordinary room noise that is close to inaudible, and callers reasonably
+  // conclude the suppressor is not working at all. Out of range falls back to
+  // moderate.
+  //
+  // The in-class default matters: `create_apm` default-constructs this struct,
+  // and without an initializer the field would hold whatever zero-init leaves
+  // there — which maps to Low and would quietly change behaviour for anyone who
+  // does not set it.
+  uint8_t noise_suppression_level = 1;
 
   webrtc::AudioProcessing::Config ToWebrtcConfig() const {
     webrtc::AudioProcessing::Config config;
@@ -39,6 +52,21 @@ struct AudioProcessingConfig {
     config.gain_controller2.adaptive_digital.enabled = gain_controller_enabled;
     config.high_pass_filter.enabled = high_pass_filter_enabled;
     config.noise_suppression.enabled = noise_suppression_enabled;
+    using NsLevel = webrtc::AudioProcessing::Config::NoiseSuppression::Level;
+    switch (noise_suppression_level) {
+      case 0:
+        config.noise_suppression.level = NsLevel::kLow;
+        break;
+      case 2:
+        config.noise_suppression.level = NsLevel::kHigh;
+        break;
+      case 3:
+        config.noise_suppression.level = NsLevel::kVeryHigh;
+        break;
+      default:
+        config.noise_suppression.level = NsLevel::kModerate;
+        break;
+    }
     return config;
   }
 };
@@ -71,6 +99,7 @@ std::unique_ptr<AudioProcessingModule> create_apm(
     bool echo_canceller_enabled,
     bool gain_controller_enabled,
     bool high_pass_filter_enabled,
-    bool noise_suppression_enabled);
+    bool noise_suppression_enabled,
+    uint8_t noise_suppression_level);
 
 }  // namespace livekit_ffi
