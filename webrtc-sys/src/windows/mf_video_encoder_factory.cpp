@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "windows/mf_video_encoder_factory.h"
+#include "mf_video_encoder_factory.h"
 
 #ifndef NOMINMAX
 #define NOMINMAX
