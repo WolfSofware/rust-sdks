@@ -659,7 +659,7 @@ class MediaFoundationH264Encoder : public VideoEncoder {
       std::vector<uint8_t> header(size);
       if (SUCCEEDED(type->GetBlob(MF_MT_MPEG_SEQUENCE_HEADER, header.data(),
                                   size, nullptr))) {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::mutex> lock(header_mutex_);
         sequence_header_ = std::move(header);
       }
     }
@@ -667,12 +667,20 @@ class MediaFoundationH264Encoder : public VideoEncoder {
 
   void StopMft() {
     running_ = false;
-    if (mft_) {
-      mft_->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
-    }
-    // Shutdown будит поток, ждущий GetEvent.
-    if (activated_) {
-      activated_->ShutdownObject();
+    {
+      // Под замком: поток событий мог как раз сидеть в ProcessOutput, и
+      // выключить кодировщик у него из-под рук — обращение к освобождённой
+      // памяти (так и падало при запуске показа: WebRTC сразу же
+      // перенастраивает кодировщик под размер первого кадра).
+      std::lock_guard<std::mutex> lock(mft_mutex_);
+      if (mft_) {
+        mft_->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
+      }
+      // Shutdown будит поток, ждущий GetEvent; проснувшись, он увидит
+      // running_ == false и к кодировщику больше не притронется.
+      if (activated_) {
+        activated_->ShutdownObject();
+      }
     }
     if (event_thread_.joinable()) {
       event_thread_.join();
@@ -688,6 +696,9 @@ class MediaFoundationH264Encoder : public VideoEncoder {
       pending_.clear();
       frame_infos_.clear();
       need_input_ = 0;
+    }
+    {
+      std::lock_guard<std::mutex> lock(header_mutex_);
       sequence_header_.clear();
     }
     async_ = false;
@@ -739,6 +750,10 @@ class MediaFoundationH264Encoder : public VideoEncoder {
       ComPtr<IMFSample> sample = pending_.front();
       pending_.pop_front();
       --need_input_;
+      std::lock_guard<std::mutex> mft_lock(mft_mutex_);
+      if (!running_ || !mft_) {
+        return;
+      }
       HRESULT hr = mft_->ProcessInput(0, sample.Get(), 0);
       if (FAILED(hr)) {
         RTC_LOG(LS_ERROR) << "MF H264 ProcessInput: " << Hex(hr);
@@ -788,8 +803,28 @@ class MediaFoundationH264Encoder : public VideoEncoder {
     }
   }
 
+  // Готовый кадр из кодировщика: байты и время — уже скопированные, чтобы
+  // отдавать их наружу без замка.
+  struct Output {
+    std::vector<uint8_t> bytes;
+    LONGLONG time = 0;
+  };
+
   // Забрать один готовый кадр. false — больше нечего (или ошибка).
   bool DrainOneOutput() {
+    std::optional<Output> out;
+    bool more = PullOutput(out);
+    if (out) {
+      Deliver(std::move(*out));
+    }
+    return more;
+  }
+
+  bool PullOutput(std::optional<Output>& out) {
+    std::lock_guard<std::mutex> mft_lock(mft_mutex_);
+    if (!mft_ || (async_ && !running_)) {
+      return false;
+    }
     MFT_OUTPUT_DATA_BUFFER output{};
     output.dwStreamID = 0;
     ComPtr<IMFSample> own_sample;
@@ -833,27 +868,31 @@ class MediaFoundationH264Encoder : public VideoEncoder {
       failed_ = true;
       return false;
     }
-    if (sample) {
-      Deliver(sample.Get());
+    if (!sample) {
+      return true;
     }
-    return true;
-  }
-
-  void Deliver(IMFSample* sample) {
     ComPtr<IMFMediaBuffer> buffer;
     if (FAILED(sample->ConvertToContiguousBuffer(&buffer))) {
-      return;
+      return true;
     }
     BYTE* data = nullptr;
     DWORD length = 0;
-    if (FAILED(buffer->Lock(&data, nullptr, &length)) || length == 0) {
-      return;
+    if (FAILED(buffer->Lock(&data, nullptr, &length))) {
+      return true;
     }
-    std::vector<uint8_t> bytes(data, data + length);
+    if (length > 0) {
+      Output o;
+      o.bytes.assign(data, data + length);
+      sample->GetSampleTime(&o.time);
+      out = std::move(o);
+    }
     buffer->Unlock();
+    return true;
+  }
 
-    LONGLONG time = 0;
-    sample->GetSampleTime(&time);
+  void Deliver(Output output) {
+    std::vector<uint8_t>& bytes = output.bytes;
+    const LONGLONG time = output.time;
     FrameInfo info;
     std::vector<uint8_t> header;
     {
@@ -870,6 +909,9 @@ class MediaFoundationH264Encoder : public VideoEncoder {
         info.time_hns = time;
         info.rtp_timestamp = static_cast<uint32_t>(time / 10 * 90 / 1000);
       }
+    }
+    {
+      std::lock_guard<std::mutex> lock(header_mutex_);
       header = sequence_header_;
     }
 
@@ -947,11 +989,19 @@ class MediaFoundationH264Encoder : public VideoEncoder {
   std::atomic<bool> running_{false};
   std::atomic<bool> failed_{false};
 
+  // Все вызовы самого кодировщика — под ним: поток событий и остановка не
+  // должны встретиться внутри одного объекта. Порядок: mutex_, затем этот.
+  std::mutex mft_mutex_;
+
   // Общее для очереди кодирования и потока событий.
   std::mutex mutex_;
   std::deque<ComPtr<IMFSample>> pending_;
   std::deque<FrameInfo> frame_infos_;
   int need_input_ = 0;
+
+  // SPS/PPS. Свой замок, самый внутренний: внутри него других не берём, и
+  // взять его можно откуда угодно, в том числе под mft_mutex_.
+  std::mutex header_mutex_;
   std::vector<uint8_t> sequence_header_;
 
   H264BitstreamParser parser_;
