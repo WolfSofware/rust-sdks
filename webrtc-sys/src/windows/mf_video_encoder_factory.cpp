@@ -72,6 +72,9 @@ constexpr UINT kVendorNvidia = 0x10DE;
 constexpr UINT kVendorAmd = 0x1002;
 constexpr UINT kVendorIntel = 0x8086;
 
+// QP, при котором неподвижный экран считается доведённым (см. GetEncoderInfo).
+constexpr int kStaticScreenQp = 24;
+
 // Сколько кадров держим в очереди на вход, пока кодировщик не попросит ещё.
 // Больше — растёт задержка: лучше выбросить старый кадр экрана.
 constexpr size_t kMaxPendingInputs = 3;
@@ -485,6 +488,14 @@ class MediaFoundationH264Encoder : public VideoEncoder {
     info.is_hardware_accelerated = true;
     info.supports_simulcast = false;
     info.preferred_pixel_formats = {VideoFrameBuffer::Type::kI420};
+    // На неподвижном экране WebRTC повторяет последний кадр, пока качество не
+    // «дойдёт», — и судит об этом по QP: дошло, когда QP не выше min_qp. Без
+    // него сходимость не наступает никогда, и неподвижный экран кодировался
+    // с полной частотой (захват отдавал 1 кадр/с, кодировщик — до 140).
+    // 24 по шкале H.264 (0–51) — текст на экране уже чёткий. QP мы читаем
+    // из самого потока, ему можно верить.
+    info.is_qp_trusted = true;
+    info.min_qp = kStaticScreenQp;
     return info;
   }
 
