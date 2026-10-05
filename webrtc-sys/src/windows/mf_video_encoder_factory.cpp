@@ -21,8 +21,7 @@
 #endif
 #include <windows.h>
 
-#include <d3d10.h>
-#include <d3d11_3.h>
+#include <d3d11_4.h>
 #include <dxgi.h>
 #include <mfapi.h>
 #include <mferror.h>
@@ -202,7 +201,7 @@ ComPtr<ID3D11Device> CreateDevice(IDXGIAdapter1* adapter) {
     return nullptr;
   }
   // Кодировщик дёргает устройство из своих потоков.
-  ComPtr<ID3D10Multithread> multithread;
+  ComPtr<ID3D11Multithread> multithread;
   if (SUCCEEDED(device.As(&multithread))) {
     multithread->SetMultithreadProtected(TRUE);
   }
