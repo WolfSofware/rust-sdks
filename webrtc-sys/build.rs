@@ -151,6 +151,9 @@ fn main() {
             println!("cargo:rustc-link-lib=dylib=dxgi");
             println!("cargo:rustc-link-lib=dylib=dwmapi");
             println!("cargo:rustc-link-lib=dylib=shcore");
+            // Аппаратный H.264 через Media Foundation (src/windows).
+            println!("cargo:rustc-link-lib=dylib=mfplat");
+            println!("cargo:rustc-link-lib=dylib=mfuuid");
 
             //let path = env::current_dir().unwrap();
             //println!("cargo:rustc-link-search=native={}/vaapi-windows/x64/lib", path.display());
@@ -158,6 +161,7 @@ fn main() {
             //println!("cargo:rustc-link-lib=dylib=va_win32");
 
             builder
+                .file("src/windows/mf_video_encoder_factory.cpp")
                 //.include("./vaapi-windows/DirectX-Headers-1.0/include")
                 //.include(path::PathBuf::from("./vaapi-windows/x64/include"))
                 //.file("vaapi-windows/DirectX-Headers-1.0/src/dxguids.cpp")
