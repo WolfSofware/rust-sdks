@@ -928,8 +928,7 @@ class MediaFoundationH264Encoder : public VideoEncoder {
 
     bool key = false;
     bool has_sps = false;
-    for (const auto& index :
-         H264::FindNaluIndices(MakeArrayView(bytes.data(), bytes.size()))) {
+    for (const auto& index : H264::FindNaluIndices(bytes)) {
       const H264::NaluType type =
           H264::ParseNaluType(bytes[index.payload_start_offset]);
       key |= type == H264::kIdr;
