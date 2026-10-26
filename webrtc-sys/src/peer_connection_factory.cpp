@@ -37,6 +37,7 @@
 #include "api/audio_options.h"
 #include "livekit/adm_proxy.h"
 #include "livekit/audio_track.h"
+#include "livekit/capture_processing.h"
 #include "livekit/peer_connection.h"
 #include "livekit/rtc_error.h"
 #include "livekit/rtp_parameters.h"
@@ -192,7 +193,13 @@ PeerConnectionFactory::PeerConnectionFactory(
       std::move(std::make_unique<livekit_ffi::VideoDecoderFactory>());
   dependencies.audio_encoder_factory = webrtc::CreateBuiltinAudioEncoderFactory();
   dependencies.audio_decoder_factory = webrtc::CreateBuiltinAudioDecoderFactory();
-  dependencies.audio_processing_builder = std::make_unique<webrtc::BuiltinAudioProcessingBuilder>();
+  // Переходник для своей обработки захвата после APM (шумодав и т. п.):
+  // пуст, пока из Rust не назначат обработчик (`set_capture_processor`).
+  auto audio_processing_builder =
+      std::make_unique<webrtc::BuiltinAudioProcessingBuilder>();
+  audio_processing_builder->SetCapturePostProcessing(
+      create_capture_post_processing());
+  dependencies.audio_processing_builder = std::move(audio_processing_builder);
 
   webrtc::EnableMedia(dependencies);
   peer_factory_ =
