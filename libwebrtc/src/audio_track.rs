@@ -26,6 +26,13 @@ pub struct RtcAudioTrack {
 
 impl RtcAudioTrack {
     media_stream_track!();
+
+    /// Громкость воспроизведения удалённой дорожки: 0 — тишина, 1 — как
+    /// есть, до 10 — усиление. Действует, когда звук играет Platform ADM.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_volume(&self, volume: f64) {
+        self.handle.set_volume(volume);
+    }
 }
 
 impl Debug for RtcAudioTrack {
