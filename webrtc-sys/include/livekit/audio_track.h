@@ -57,6 +57,10 @@ class AudioTrack : public MediaStreamTrack {
   void add_sink(const std::shared_ptr<NativeAudioSink>& sink) const;
   void remove_sink(const std::shared_ptr<NativeAudioSink>& sink) const;
 
+  // Громкость воспроизведения удалённой дорожки: 0 — тишина, 1 — как есть,
+  // до 10 — усиление. Локальная дорожка громкость игнорирует.
+  void set_volume(double volume) const;
+
  private:
   webrtc::AudioTrackInterface* track() const {
     return static_cast<webrtc::AudioTrackInterface*>(track_.get());

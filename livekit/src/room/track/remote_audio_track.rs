@@ -79,6 +79,13 @@ impl RemoteAudioTrack {
         self.inner.rtc_track.set_enabled(false);
     }
 
+    /// Громкость воспроизведения этой дорожки: 0 — тишина, 1 — как есть, до
+    /// 10 — усиление. Действует, когда звук играет Platform ADM
+    /// ([`crate::PlatformAudio`]).
+    pub fn set_volume(&self, volume: f64) {
+        self.rtc_track().set_volume(volume.clamp(0.0, 10.0));
+    }
+
     pub fn is_muted(&self) -> bool {
         self.inner.info.read().muted
     }
