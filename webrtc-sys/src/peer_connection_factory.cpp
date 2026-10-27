@@ -87,6 +87,25 @@ class EnableWarpFieldTrials final : public webrtc::FieldTrialsView {
   }
 };
 
+// FlexFEC-03: advertise the codec in SDP and protect sent video with it.
+// LiveKit (rtc.flexfec.upstream_enabled) repairs upstream losses with it; a
+// server without it leaves flexfec out of the answer, so this is a no-op there.
+// WebRTC never sends FlexFEC with simulcast, so in practice it covers
+// single-layer publications (our screen share).
+class FlexFecFieldTrials final : public webrtc::FieldTrialsView {
+ public:
+  std::string Lookup(absl::string_view key) const override {
+    if (key == "WebRTC-FlexFEC-03" || key == "WebRTC-FlexFEC-03-Advertised") {
+      return "Enabled";
+    }
+    return "";
+  }
+
+  std::unique_ptr<webrtc::FieldTrialsView> CreateCopy() const override {
+    return std::make_unique<FlexFecFieldTrials>();
+  }
+};
+
 // An Environment accepts a single FieldTrialsView, so to enable several
 // independent trial groups (e.g. zero-playout-delay AND WARP) we combine their
 // views into one: Lookup delegates to each sub-view and returns the first
@@ -120,11 +139,12 @@ class CompositeFieldTrials final : public webrtc::FieldTrialsView {
   std::vector<std::unique_ptr<webrtc::FieldTrialsView>> views_;
 };
 
-// zero_playout_delay and enable_warp are independent and may both be enabled;
-// their field-trial views are composed into one.
+// FlexFEC is always on; zero_playout_delay and enable_warp are independent and
+// may both be enabled. Their field-trial views are composed into one.
 webrtc::Environment CreateEnvironment(bool zero_playout_delay,
                                       bool enable_warp) {
   std::vector<std::unique_ptr<webrtc::FieldTrialsView>> views;
+  views.push_back(std::make_unique<FlexFecFieldTrials>());
   if (zero_playout_delay) {
     views.push_back(std::make_unique<ZeroPlayoutDelayFieldTrials>());
   }
@@ -132,9 +152,6 @@ webrtc::Environment CreateEnvironment(bool zero_playout_delay,
     views.push_back(std::make_unique<EnableWarpFieldTrials>());
   }
 
-  if (views.empty()) {
-    return webrtc::CreateEnvironment();
-  }
   return webrtc::CreateEnvironment(
       std::make_unique<CompositeFieldTrials>(std::move(views)));
 }
