@@ -381,4 +381,25 @@ mod tests {
         alice.close();
         bob.close();
     }
+
+    #[tokio::test]
+    async fn video_offer_advertises_and_sends_flexfec() {
+        use crate::{
+            media_stream_track::MediaStreamTrack,
+            peer_connection_factory::native::PeerConnectionFactoryExt,
+            video_source::{native::NativeVideoSource, VideoResolution},
+        };
+
+        let factory = PeerConnectionFactory::default();
+        let pc = factory.create_peer_connection(RtcConfiguration::default()).unwrap();
+        let source = NativeVideoSource::new(VideoResolution { width: 1280, height: 720 }, true);
+        let track = factory.create_video_track("screen", source);
+        pc.add_track(MediaStreamTrack::Video(track), &["stream"]).unwrap();
+
+        let sdp = pc.create_offer(OfferOptions::default()).await.unwrap().to_string();
+        // Advertised: the codec is offered. Sent: a FlexFEC SSRC is grouped with the video one.
+        assert!(sdp.contains("flexfec-03"), "{sdp}");
+        assert!(sdp.contains("a=ssrc-group:FEC-FR"), "{sdp}");
+        pc.close();
+    }
 }
