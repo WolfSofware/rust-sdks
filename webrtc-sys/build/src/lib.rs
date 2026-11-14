@@ -29,6 +29,24 @@ use reqwest::StatusCode;
 
 pub const SCRATH_PATH: &str = "livekit_webrtc";
 pub const WEBRTC_TAG: &str = "webrtc-83af826";
+/// Windows — своя сборка из выпусков форка WolfSofware/rust-sdks:
+/// WolfSofware/webrtc `wolf/m150-06-lts` (webrtc-sdk m150 .06 + исправления
+/// Google M150-LTS, которых у LiveKit нет). Остальные платформы — выпуск LiveKit.
+pub const WOLF_WIN_WEBRTC_TAG: &str = "webrtc-982bae5";
+
+/// Своя сборка есть только под Windows x64.
+fn wolf_build() -> bool {
+    target_os() == "win" && target_arch() == "x64"
+}
+
+/// Тег сборки libwebrtc для текущей цели.
+pub fn webrtc_tag() -> &'static str {
+    if wolf_build() {
+        WOLF_WIN_WEBRTC_TAG
+    } else {
+        WEBRTC_TAG
+    }
+}
 pub const IGNORE_DEFINES: [&str; 2] = ["CR_CLANG_REVISION", "CR_XCODE_VERSION"];
 
 pub fn target_os() -> String {
@@ -93,15 +111,16 @@ pub fn prebuilt_dir() -> path::PathBuf {
     path::Path::new(&target_dir).join(format!(
         "livekit/{}-{}/{}",
         webrtc_triple(),
-        WEBRTC_TAG,
+        webrtc_tag(),
         webrtc_triple()
     ))
 }
 
 pub fn download_url() -> String {
     format!(
-        "https://github.com/livekit/rust-sdks/releases/download/{}/{}.zip",
-        WEBRTC_TAG,
+        "https://github.com/{}/rust-sdks/releases/download/{}/{}.zip",
+        if wolf_build() { "WolfSofware" } else { "livekit" },
+        webrtc_tag(),
         format!("webrtc-{}", webrtc_triple())
     )
 }
