@@ -29,14 +29,17 @@ use reqwest::StatusCode;
 
 pub const SCRATH_PATH: &str = "livekit_webrtc";
 pub const WEBRTC_TAG: &str = "webrtc-83af826";
-/// Windows — своя сборка из выпусков форка WolfSofware/rust-sdks:
+/// Windows x64 и Linux — своя сборка из выпусков форка WolfSofware/rust-sdks:
 /// WolfSofware/webrtc `wolf/m150-06-lts` (webrtc-sdk m150 .06 + исправления
 /// Google M150-LTS, которых у LiveKit нет). Остальные платформы — выпуск LiveKit.
 pub const WOLF_WIN_WEBRTC_TAG: &str = "webrtc-982bae5";
 
-/// Своя сборка есть только под Windows x64.
+/// Своя сборка есть под Windows x64 и Linux x64/arm64 — платформы Rust-клиента.
 fn wolf_build() -> bool {
-    target_os() == "win" && target_arch() == "x64"
+    matches!(
+        (target_os().as_str(), target_arch().as_str()),
+        ("win", "x64") | ("linux", "x64") | ("linux", "arm64")
+    )
 }
 
 /// Тег сборки libwebrtc для текущей цели.
