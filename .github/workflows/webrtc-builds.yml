@@ -24,23 +24,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Форк WolfSofware: настольные платформы Rust-клиента — Windows x64,
-        # macOS, Linux. Исходник закреплён коммитом в .gclient: WolfSofware/webrtc
+        # Форк WolfSofware: платформы Rust-клиента — Windows x64 и Linux
+        # (на macOS клиент нативный, Swift). Исходник закреплён коммитом в .gclient: WolfSofware/webrtc
         # wolf/m150-06-lts (webrtc-sdk m150 .06 + исправления Google M150-LTS).
-        # Остальные цели (Windows ARM64, Android, iOS) качают выпуск LiveKit.
+        # Остальные цели (macOS, Windows ARM64, Android, iOS) качают выпуск LiveKit.
         target:
           - name: win
             os: windows-2022
             cmd: .\build_windows.cmd
             arch: x64
-          - name: mac
-            os: macos-latest
-            cmd: ./build_macos.sh
-            arch: x64
-          - name: mac
-            os: macos-latest
-            cmd: ./build_macos.sh
-            arch: arm64
           - name: linux
             os: ubuntu-latest
             cmd: ./build_linux.sh
