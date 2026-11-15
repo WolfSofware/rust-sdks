@@ -831,9 +831,17 @@ int32_t AdmProxy::PlayoutDelay(uint16_t* delayMS) const {
 }
 
 bool AdmProxy::BuiltInAECIsAvailable() const {
+#if defined(_WIN32)
+  // Встроенный AEC Windows — DMO «Voice Capture DSP»: он открывает устройства
+  // как звонок, и Windows приглушает остальные программы (настройка «Связь»).
+  // Отвечая «нет», оставляем эхо программному APM: иначе WebRTC включает DMO
+  // сам при каждой публикации микрофона (WebRtcVoiceEngine::ApplyOptions).
+  return false;
+#else
   return WithPlatformAdm<bool>(false, [](webrtc::AudioDeviceModule& adm) {
     return adm.BuiltInAECIsAvailable();
   });
+#endif
 }
 
 bool AdmProxy::BuiltInAGCIsAvailable() const {
